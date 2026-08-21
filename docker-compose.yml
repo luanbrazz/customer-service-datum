@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -12,6 +10,28 @@ services:
       - "5432:5432"
     volumes:
       - customer_pg_data:/var/lib/postgresql/data
+
+  score-mock-service:
+    build: ./score-mock-service
+    container_name: score-mock-service
+    ports:
+      - "8081:8081"
+
+  customer-service:
+    build: ./customer-service
+    container_name: customer-service
+    ports:
+      - "8080:8080"
+    environment:
+      SCORE_SERVICE_BASE_URL: http://score-mock-service:8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/customerdb
+      SPRING_DATASOURCE_DRIVER: org.postgresql.Driver
+      SPRING_DATASOURCE_USERNAME: customer_user
+      SPRING_DATASOURCE_PASSWORD: customer_pass
+      SPRING_JPA_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+    depends_on:
+      - postgres
+      - score-mock-service
 
 volumes:
   customer_pg_data:
