@@ -5,6 +5,7 @@ import com.lb.customerservice.dto.ScoreResponse;
 import com.lb.customerservice.exception.ExternalServiceTimeoutException;
 import com.lb.customerservice.exception.ExternalServiceUnavailableException;
 import com.lb.customerservice.exception.ExternalServiceUnexpectedResponseException;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
@@ -25,6 +26,7 @@ public class ScoreClient {
         this.properties = properties;
     }
 
+    @CircuitBreaker(name = "scoreService", fallbackMethod = "fallback")
     public ScoreResponse fetchScore(String cpf) {
         String url = properties.getBaseUrl() + "/scores/{cpf}";
         try {
@@ -57,5 +59,9 @@ public class ScoreClient {
 
     private boolean isTimeout(ResourceAccessException ex) {
         return ex.getCause() instanceof SocketTimeoutException;
+    }
+
+    private ScoreResponse fallback(String cpf, Throwable throwable) {
+        throw new ExternalServiceUnavailableException("Circuit breaker aberto - servico de score temporariamente indisponivel", throwable);
     }
 }
