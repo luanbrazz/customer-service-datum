@@ -34,3 +34,8 @@ app:
       - username: admin
         password: ${APP_ADMIN_PASSWORD:admin123}
         role: ADMIN
+
+  score-service:
+    base-url: ${SCORE_SERVICE_BASE_URL:http://localhost:8081}
+    connect-timeout-ms: ${SCORE_SERVICE_CONNECT_TIMEOUT_MS:2000}
+    read-timeout-ms: ${SCORE_SERVICE_READ_TIMEOUT_MS:3000}

@@ -41,6 +41,21 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno inesperado. Contate o administrador.", request, null);
     }
 
+    @ExceptionHandler(ExternalServiceUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleExternalUnavailable(ExternalServiceUnavailableException ex, HttpServletRequest request) {
+        return build(HttpStatus.SERVICE_UNAVAILABLE, "Servico de score esta indisponivel no momento. Tente novamente mais tarde.", request, null);
+    }
+
+    @ExceptionHandler(ExternalServiceTimeoutException.class)
+    public ResponseEntity<ApiErrorResponse> handleExternalTimeout(ExternalServiceTimeoutException ex, HttpServletRequest request) {
+        return build(HttpStatus.GATEWAY_TIMEOUT, "Tempo limite excedido ao consultar o servico de score.", request, null);
+    }
+
+    @ExceptionHandler(ExternalServiceUnexpectedResponseException.class)
+    public ResponseEntity<ApiErrorResponse> handleExternalUnexpected(ExternalServiceUnexpectedResponseException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_GATEWAY, "Resposta inesperada recebida do servico de score.", request, null);
+    }
+
     private ResponseEntity<ApiErrorResponse> build(HttpStatus status, String message, HttpServletRequest request,
                                                    List<FieldErrorDetail> errors) {
         ApiErrorResponse body = ApiErrorResponse.builder()

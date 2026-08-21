@@ -4,8 +4,10 @@ import com.lb.customerservice.domain.Customer;
 import com.lb.customerservice.domain.CustomerStatus;
 import com.lb.customerservice.dto.CustomerRequest;
 import com.lb.customerservice.dto.CustomerResponse;
+import com.lb.customerservice.dto.ScoreResponse;
 import com.lb.customerservice.mapper.CustomerMapper;
 import com.lb.customerservice.service.CustomerService;
+import com.lb.customerservice.service.ScoreService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +22,7 @@ import java.util.List;
 public class CustomerController {
 
     private final CustomerService customerService;
+    private final ScoreService scoreService;
 
     @PostMapping
     public ResponseEntity<CustomerResponse> create(@Valid @RequestBody CustomerRequest request) {
@@ -60,5 +63,11 @@ public class CustomerController {
                 .map(CustomerMapper::toResponse)
                 .toList();
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}/score")
+    public ResponseEntity<ScoreResponse> getScore(@PathVariable Long id) {
+        ScoreResponse score = scoreService.getScoreByCustomerId(id);
+        return ResponseEntity.ok(score);
     }
 }
