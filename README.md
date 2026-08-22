@@ -1,29 +1,30 @@
 # Desafio Técnico — Desenvolvedor Java Pleno
 
 Microsserviço de **gerenciamento de clientes**, com integração HTTP a um serviço
-externo de **score**, desenvolvido para o desafio técnico da vaga de
-Desenvolvedor(a) Java Pleno (Datum).
+externo de **score** e notificação assíncrona via **RabbitMQ**, desenvolvido
+para o desafio técnico da vaga de Desenvolvedor(a) Java Pleno (Datum).
 
-O repositório contém dois projetos Maven independentes:
+O repositório contém três projetos Maven independentes:
 
 | Projeto | Descrição | Porta |
 |---|---|---|
 | `customer-service` | Microsserviço principal (o entregável do desafio) | `8080` |
 | `score-mock-service` | Simulador do serviço externo de score (`GET /scores/{cpf}`) | `8081` |
+| `notification-service` | Consome eventos de cliente criado via RabbitMQ (bônus) | — (sem API REST) |
 
 ---
 
 ## 1. Requisitos para execução
 
 - Java 17+ (JDK)
-- Maven 3.8+ (ou use o `mvnw`/`mvnw.cmd` incluso no projeto)
-- Docker e Docker Compose (opcional, mas recomendado — sobe tudo com um comando)
+- Maven 3.8+ (ou use o `mvnw`/`mvnw.cmd` incluso em cada projeto)
+- Docker e Docker Compose (recomendado — sobe tudo com um comando)
 
 ---
 
 ## 2. Como iniciar a aplicação
 
-### Opção A — Docker Compose (recomendado, sobe os 3 serviços já conectados)
+### Opção A — Docker Compose (recomendado, sobe tudo já conectado)
 
 Na raiz do repositório:
 
@@ -32,31 +33,44 @@ docker compose up --build
 ```
 
 Isso sobe:
-- **PostgreSQL** na porta `5432` (banco do `customer-service` em modo containerizado)
+- **PostgreSQL** na porta `5432`
+- **RabbitMQ** nas portas `5672` (AMQP) e `15672` (painel web, login `guest`/`guest`)
 - **score-mock-service** na porta `8081`
-- **customer-service** na porta `8080`, já conectado ao Postgres e ao score-mock-service
+- **notification-service** (consumidor de fila, sem porta HTTP exposta)
+- **customer-service** na porta `8080`, já conectado a todos os anteriores
 
-Para derrubar tudo (incluindo os dados do banco):
+Para derrubar tudo (incluindo dados do banco):
 ```bash
 docker compose down -v
 ```
 
-### Opção B — Maven local (dois terminais, banco H2 em memória)
+### Opção B — Maven local (quatro terminais, banco H2 em memória)
 
+O RabbitMQ precisa estar de pé mesmo no modo local — sobe só ele via Docker:
 ```bash
-# Terminal 1 — simulador do servico externo de score (porta 8081)
-cd score-mock-service
-mvnw spring-boot:run
-
-# Terminal 2 — microsservico de clientes (porta 8080), usa H2 em memoria por padrao
-cd customer-service
-mvnw spring-boot:run
+docker compose up -d rabbitmq
 ```
 
-Nesse modo, o `customer-service` sobe com banco **H2 em memória** automaticamente
-(nenhuma configuração extra necessária). O console do H2 fica disponível em
+```bash
+# Terminal 1 — simulador do servico de score (porta 8081)
+cd score-mock-service && mvnw spring-boot:run
+
+# Terminal 2 — consumidor de notificacoes
+cd notification-service && mvnw spring-boot:run
+
+# Terminal 3 — microsservico de clientes (porta 8080), usa H2 por padrao
+cd customer-service && mvnw spring-boot:run
+```
+
+Nesse modo, o `customer-service` sobe com o profile `test` ativo por padrão
+(banco **H2 em memória**, zero configuração extra). O console do H2 fica em
 `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:mem:customerdb`, usuário
 `sa`, senha em branco).
+
+Para rodar contra Postgres localmente (fora do Docker), ative o profile `prod`:
+```bash
+SPRING_PROFILES_ACTIVE=prod mvnw spring-boot:run
+```
 
 ---
 
@@ -91,7 +105,7 @@ Todas as rotas exigem **Basic Authentication**. Perfis:
 
 | Método | Endpoint | Perfil | Descrição |
 |---|---|---|---|
-| `POST` | `/customers` | ADMIN | Cria um cliente |
+| `POST` | `/customers` | ADMIN | Cria um cliente (publica evento `customer.created` no RabbitMQ) |
 | `PUT` | `/customers/{id}` | ADMIN | Atualiza um cliente |
 | `DELETE` | `/customers/{id}` | ADMIN | Exclui um cliente |
 | `GET` | `/customers/{id}` | USER, ADMIN | Consulta cliente por id |
@@ -117,8 +131,15 @@ Todas as rotas exigem **Basic Authentication**. Perfis:
 
 ## 5. Configurações necessárias
 
-Configuração externalizada via `application.yaml` + variáveis de ambiente
-(sem necessidade de alterar código para trocar de ambiente):
+O `customer-service` usa **Spring Profiles** para alternar de banco sem
+alterar código:
+
+- **`test`** (padrão): H2 em memória — zero configuração, é o que roda se
+  nenhuma variável for definida.
+- **`prod`**: PostgreSQL — ativado via `SPRING_PROFILES_ACTIVE=prod`, usado
+  automaticamente pelo `docker-compose.yml`.
+
+Configuração externalizada via `application.yaml` + variáveis de ambiente:
 
 ```yaml
 app:
@@ -134,17 +155,20 @@ app:
     base-url: ${SCORE_SERVICE_BASE_URL:http://localhost:8081}
     connect-timeout-ms: ${SCORE_SERVICE_CONNECT_TIMEOUT_MS:2000}
     read-timeout-ms: ${SCORE_SERVICE_READ_TIMEOUT_MS:3000}
+
+spring:
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
 ```
 
-O datasource também é externalizado — por padrão usa H2 em memória; pode ser
-apontado para Postgres (ou outro banco) via variáveis de ambiente
-(`SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_DRIVER`,
-`SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`,
-`SPRING_JPA_DIALECT`) — é exatamente assim que o `docker-compose.yml` conecta
-o `customer-service` ao Postgres containerizado.
+Credenciais do Postgres (perfil `prod`) e do RabbitMQ também são
+externalizadas por variável de ambiente — nunca fixas no código.
 
 O comportamento de resiliência (circuit breaker) na chamada ao serviço de
-score também é configurável, na seção `resilience4j` do mesmo arquivo.
+score é configurável na seção `resilience4j` do mesmo arquivo.
 
 ---
 
@@ -173,7 +197,7 @@ os tratamentos de erro exigidos no desafio:
 ## 7. Exemplos de utilização da API
 
 ```bash
-# Criar cliente (ADMIN)
+# Criar cliente (ADMIN) - dispara notificacao assincrona via RabbitMQ
 curl -u admin:admin123 -X POST http://localhost:8080/customers \
   -H "Content-Type: application/json" \
   -d '{"name":"Joao da Silva","cpf":"11144477735","email":"joao@email.com"}'
@@ -203,16 +227,19 @@ curl -i http://localhost:8080/customers
 ```
 
 Também pode ser testado via Postman/Insomnia, usando Basic Auth com as
-credenciais da seção 4.
+credenciais da seção 4. Após criar um cliente, o log do `notification-service`
+mostra a notificação processada, e a fila `customer.created.queue` pode ser
+inspecionada visualmente em `http://localhost:15672`.
 
 ---
 
 ## 8. Decisões técnicas
 
 - **Java 17, Spring Boot 3.3, Maven** conforme solicitado.
-- **Persistência**: H2 em memória (padrão) ou Postgres (via Docker/variáveis
-  de ambiente) + Spring Data JPA para o CRUD; uma **native query** para busca
-  por nome; consulta com **`JdbcTemplate`** para filtro por status.
+- **Persistência**: H2 em memória (profile `test`, padrão) ou PostgreSQL
+  (profile `prod`, via Docker) + Spring Data JPA para o CRUD; uma **native
+  query** para busca por nome; consulta com **`JdbcTemplate`** para filtro
+  por status.
 - **Segurança**: Spring Security com **Basic Authentication**, perfis `USER`
   (consulta) e `ADMIN` (CRUD completo).
 - **Validação**: Bean Validation (`@NotBlank`, `@Email`, `@CPF` com dígito
@@ -222,5 +249,5 @@ credenciais da seção 4.
   do serviço de score afete a disponibilidade do `customer-service`.
 - **Tratamento de erros**: centralizado em `GlobalExceptionHandler`
   (`@RestControllerAdvice`), com status HTTP e formato JSON consistentes.
-- **Arquitetura de microsserviços**: dois serviços independentes, cada um com
-  seu próprio `pom.xml`, Dockerfile e ciclo de vida, comunicando-se via HTTP.
+- **Mensageria assíncrona**: ao criar um cliente, o `customer-service` publica
+  um evento `customer.created` num
