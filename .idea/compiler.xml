@@ -9,12 +9,14 @@
         <outputRelativeToContentRoot value="true" />
         <module name="score-mock-service" />
         <module name="customer-service" />
+        <module name="notification-service" />
       </profile>
     </annotationProcessing>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="customer-service" options="-parameters" />
+      <module name="notification-service" options="-parameters" />
       <module name="score-mock-service" options="-parameters" />
     </option>
   </component>
