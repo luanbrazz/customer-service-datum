@@ -1572,6 +1572,488 @@
           ]
         }
       ]
+    },
+    {
+      "name": "6 - Ativar e Desativar Cliente (Soft Delete)",
+      "description": "PATCH /customers/{id}/deactivate e /activate. Cobre autorizacao (so ADMIN), persistencia do status, e a mensagem de erro que orienta reativacao quando o CPF pertence a um cliente inativo.",
+      "item": [
+        {
+          "name": "201 - Criar cliente para teste de ativacao/desativacao",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/customers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers"
+              ]
+            },
+            "description": "Cliente auxiliar usado por toda esta pasta. Salva o id em `customer_id_patch`.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{admin_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_password}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cliente Ativacao Teste\",\n  \"cpf\": \"{{cpf_valid_deactivate}}\",\n  \"email\": \"ativacao@email.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code e 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.environment.set('customer_id_patch', jsonData.id);",
+                  "    console.log('customer_id_patch salvo:', jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "403 - USER tentando desativar cliente",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/customers/{{customer_id_patch}}/deactivate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers",
+                "{{customer_id_patch}}",
+                "deactivate"
+              ]
+            },
+            "description": "PATCH e uma operacao de escrita - assim como POST/PUT/DELETE, deve ser restrita ao perfil ADMIN. Confirma que o perfil USER e barrado.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{user_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{user_password}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code e 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "200 - Desativar cliente (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/customers/{{customer_id_patch}}/deactivate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers",
+                "{{customer_id_patch}}",
+                "deactivate"
+              ]
+            },
+            "description": "Muda o status para INACTIVE sem apagar o registro (soft delete) - diferente do DELETE, que remove a linha do banco de forma definitiva.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{admin_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_password}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code e 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Status retornado e INACTIVE', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('INACTIVE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "200 - Confirmar que o cliente esta INACTIVE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/customers/{{customer_id_patch}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers",
+                "{{customer_id_patch}}"
+              ]
+            },
+            "description": "Confirma, via um GET simples, que a desativacao persistiu no banco.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{user_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{user_password}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code e 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Status persistido e INACTIVE', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('INACTIVE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409 - Criar novo cliente com CPF de um cliente INATIVO",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/customers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers"
+              ]
+            },
+            "description": "O CPF ja existe (pertence ao cliente que acabamos de desativar). A mensagem de erro deve orientar explicitamente a reativacao, em vez do texto generico de 'CPF ja cadastrado'.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{admin_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_password}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Outro Cliente Mesmo CPF\",\n  \"cpf\": \"{{cpf_valid_deactivate}}\",\n  \"email\": \"outro@email.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code e 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "pm.test('Mensagem orienta a reativacao', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message.toLowerCase()).to.include('inativo');",
+                  "    pm.expect(jsonData.message).to.include('/activate');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "403 - USER tentando reativar cliente",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/customers/{{customer_id_patch}}/activate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers",
+                "{{customer_id_patch}}",
+                "activate"
+              ]
+            },
+            "description": "Mesma regra de autorizacao do deactivate - so ADMIN pode reativar.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{user_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{user_password}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code e 403', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "200 - Reativar cliente (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/customers/{{customer_id_patch}}/activate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers",
+                "{{customer_id_patch}}",
+                "activate"
+              ]
+            },
+            "description": "Volta o status para ACTIVE. Segue o caminho sugerido na mensagem de erro do request anterior.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{admin_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_password}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code e 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Status retornado e ACTIVE', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('ACTIVE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "200 - Confirmar que o cliente voltou a ser ACTIVE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/customers/{{customer_id_patch}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers",
+                "{{customer_id_patch}}"
+              ]
+            },
+            "description": "Fecha o ciclo: cliente criado -> desativado -> tentativa de duplicidade orientando reativacao -> reativado.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{user_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{user_password}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code e 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Status persistido e ACTIVE', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('ACTIVE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 - Desativar cliente inexistente",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/customers/999999/deactivate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "customers",
+                "999999",
+                "deactivate"
+              ]
+            },
+            "description": "Id que nao existe - deve devolver 404, nao criar nem quebrar.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{admin_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_password}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code e 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": []

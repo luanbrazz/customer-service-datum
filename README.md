@@ -101,18 +101,39 @@ Todas as rotas exigem **Basic Authentication**. Perfis:
 | Usuário | Senha | Perfil | Pode fazer |
 |---|---|---|---|
 | `user` | `user123` | `USER` | Apenas consultas (GET) |
-| `admin` | `admin123` | `ADMIN` | Consultas + criar/alterar/excluir |
+| `admin` | `admin123` | `ADMIN` | Consultas + criar/alterar/excluir/ativar/desativar |
 
 | Método | Endpoint | Perfil | Descrição |
 |---|---|---|---|
 | `POST` | `/customers` | ADMIN | Cria um cliente (publica evento `customer.created` no RabbitMQ) |
 | `PUT` | `/customers/{id}` | ADMIN | Atualiza um cliente |
-| `DELETE` | `/customers/{id}` | ADMIN | Exclui um cliente |
+| `PATCH` | `/customers/{id}/deactivate` | ADMIN | Desativa um cliente (soft delete — status vira `INACTIVE`) |
+| `PATCH` | `/customers/{id}/activate` | ADMIN | Reativa um cliente (status volta a `ACTIVE`) |
+| `DELETE` | `/customers/{id}` | ADMIN | Exclui um cliente (hard delete — remove a linha do banco) |
 | `GET` | `/customers/{id}` | USER, ADMIN | Consulta cliente por id |
 | `GET` | `/customers` | USER, ADMIN | Lista todos os clientes |
 | `GET` | `/customers?status=ACTIVE` | USER, ADMIN | Lista clientes por status (via `JdbcTemplate`) |
 | `GET` | `/customers/search?name=joao` | USER, ADMIN | Busca por nome, parcial e case-insensitive (via **Native Query**) |
 | `GET` | `/customers/{id}/score` | USER, ADMIN | Consulta o score do cliente no serviço externo |
+
+### Desativar vs. Excluir
+
+O `DELETE` é um **hard delete**: remove a linha do banco de forma definitiva,
+sem volta. O `PATCH .../deactivate` é um **soft delete**: mantém o registro
+no banco, só marca o cliente como `INACTIVE` — útil quando o histórico do
+cliente precisa ser preservado (pedidos, faturas, auditoria), diferente de um
+cadastro que realmente não deveria ter existido.
+
+Se você tentar criar um cliente novo com um CPF que já pertence a um cliente
+**inativo**, a API responde `409 Conflict` com uma mensagem que já orienta a
+reativação, em vez de um texto genérico de "CPF já cadastrado":
+
+```json
+{
+  "status": 409,
+  "message": "Ja existe um cliente cadastrado com o CPF informado, porem ele esta INATIVO (id=3). Reative-o em vez de criar um novo cliente, via PATCH /customers/3/activate"
+}
+```
 
 ### Respostas de erro por situação
 
@@ -122,7 +143,7 @@ Todas as rotas exigem **Basic Authentication**. Perfis:
 | Não autenticado | `401 Unauthorized` |
 | Autenticado, mas sem permissão | `403 Forbidden` |
 | Cliente inexistente | `404 Not Found` |
-| CPF já cadastrado | `409 Conflict` |
+| CPF já cadastrado (ativo ou inativo) | `409 Conflict` |
 | Resposta inesperada do serviço de score | `502 Bad Gateway` |
 | Serviço de score indisponível / circuit breaker aberto | `503 Service Unavailable` |
 | Timeout na chamada ao serviço de score | `504 Gateway Timeout` |
@@ -219,7 +240,13 @@ curl -u admin:admin123 -X PUT http://localhost:8080/customers/1 \
   -H "Content-Type: application/json" \
   -d '{"name":"Joao Atualizado","cpf":"11144477735","email":"joao.novo@email.com","status":"ACTIVE"}'
 
-# Excluir cliente (ADMIN)
+# Desativar cliente (ADMIN) - soft delete
+curl -u admin:admin123 -X PATCH http://localhost:8080/customers/1/deactivate
+
+# Reativar cliente (ADMIN)
+curl -u admin:admin123 -X PATCH http://localhost:8080/customers/1/activate
+
+# Excluir cliente (ADMIN) - hard delete
 curl -u admin:admin123 -X DELETE http://localhost:8080/customers/1
 
 # Sem autenticacao -> 401
@@ -231,6 +258,13 @@ credenciais da seção 4. Após criar um cliente, o log do `notification-service
 mostra a notificação processada, e a fila `customer.created.queue` pode ser
 inspecionada visualmente em `http://localhost:15672`.
 
+Uma collection completa do Postman está disponível em
+[`customer-service.postman_collection.json`](./customer-service.postman_collection.json),
+junto com o environment
+[`customer-service.postman_environment.json`](./customer-service.postman_environment.json) —
+cobre todos os endpoints, cenários de erro e o fluxo de ativação/desativação,
+com variáveis dinâmicas e encadeamento automático de ids entre requests.
+
 ---
 
 ## 8. Decisões técnicas
@@ -241,13 +275,25 @@ inspecionada visualmente em `http://localhost:15672`.
   query** para busca por nome; consulta com **`JdbcTemplate`** para filtro
   por status.
 - **Segurança**: Spring Security com **Basic Authentication**, perfis `USER`
-  (consulta) e `ADMIN` (CRUD completo).
+  (consulta) e `ADMIN` (CRUD completo, incluindo ativação/desativação).
 - **Validação**: Bean Validation (`@NotBlank`, `@Email`, `@CPF` com dígito
   verificador real) no DTO de entrada.
+- **Soft delete vs. hard delete**: além do `DELETE` (remoção definitiva), os
+  endpoints `PATCH .../deactivate` e `.../activate` permitem desativar um
+  cliente preservando o histórico. Tentar cadastrar um CPF que pertence a um
+  cliente inativo devolve `409` com mensagem orientando a reativação, em vez
+  de um erro genérico.
 - **Integração com o serviço externo**: `RestTemplate` com timeouts
   configuráveis + **circuit breaker (Resilience4j)**, evitando que uma falha
   do serviço de score afete a disponibilidade do `customer-service`.
 - **Tratamento de erros**: centralizado em `GlobalExceptionHandler`
   (`@RestControllerAdvice`), com status HTTP e formato JSON consistentes.
 - **Mensageria assíncrona**: ao criar um cliente, o `customer-service` publica
-  um evento `customer.created` num
+  um evento `customer.created` num exchange RabbitMQ; o `notification-service`
+  consome esse evento de forma independente, sem acoplar a criação do cliente
+  ao processamento da notificação. Cada serviço declara a topologia
+  (exchange/fila/binding) de forma idempotente, evitando dependência de ordem
+  de inicialização entre os serviços.
+- **Arquitetura de microsserviços**: três serviços independentes, cada um com
+  seu próprio `pom.xml`, Dockerfile e ciclo de vida, comunicando-se via HTTP
+  (síncrono) e RabbitMQ (assíncrono).
