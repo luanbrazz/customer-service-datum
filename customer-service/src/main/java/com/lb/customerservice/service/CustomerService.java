@@ -3,9 +3,11 @@ package com.lb.customerservice.service;
 import com.lb.customerservice.domain.Customer;
 import com.lb.customerservice.domain.CustomerStatus;
 import com.lb.customerservice.dto.CustomerRequest;
+import com.lb.customerservice.event.CustomerCreatedEvent;
 import com.lb.customerservice.exception.CpfAlreadyExistsException;
 import com.lb.customerservice.exception.CustomerNotFoundException;
 import com.lb.customerservice.mapper.CustomerMapper;
+import com.lb.customerservice.messaging.CustomerEventPublisher;
 import com.lb.customerservice.repository.CustomerJdbcRepository;
 import com.lb.customerservice.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,16 +22,21 @@ public class CustomerService {
 
     private final CustomerRepository customerRepository;
     private final CustomerJdbcRepository customerJdbcRepository;
+    private final CustomerEventPublisher eventPublisher;
 
     @Transactional
     public Customer create(CustomerRequest request) {
         validateCpfNotDuplicated(request.getCpf());
-
         Customer customer = CustomerMapper.toEntity(request);
         if (customer.getStatus() == null) {
             customer.setStatus(CustomerStatus.ACTIVE);
         }
-        return customerRepository.save(customer);
+        Customer saved = customerRepository.save(customer);
+
+        eventPublisher.publishCustomerCreated(
+                new CustomerCreatedEvent(saved.getId(), saved.getName(), saved.getEmail()));
+
+        return saved;
     }
 
     @Transactional

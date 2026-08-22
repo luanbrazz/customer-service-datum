@@ -6,6 +6,11 @@ spring:
     name: customer-service
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:test}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
 
 app:
   security:
