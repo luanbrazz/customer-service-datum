@@ -74,9 +74,12 @@ public class CustomerService {
     }
 
     private void validateCpfNotDuplicated(String cpf) {
-        if (customerRepository.existsByCpf(cpf)) {
+        customerRepository.findByCpf(cpf).ifPresent(existing -> {
+            if (existing.getStatus() == CustomerStatus.INACTIVE) {
+                throw new CpfAlreadyExistsException(cpf, existing.getId());
+            }
             throw new CpfAlreadyExistsException(cpf);
-        }
+        });
     }
 
     private void applyUpdates(Customer existing, CustomerRequest request) {
@@ -91,5 +94,12 @@ public class CustomerService {
     private Customer findByIdOrThrow(Long id) {
         return customerRepository.findById(id)
                 .orElseThrow(() -> new CustomerNotFoundException(id));
+    }
+
+    @Transactional
+    public Customer changeStatus(Long id, CustomerStatus newStatus) {
+        Customer customer = findByIdOrThrow(id);
+        customer.setStatus(newStatus);
+        return customerRepository.save(customer);
     }
 }

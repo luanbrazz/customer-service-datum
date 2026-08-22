@@ -70,4 +70,16 @@ public class CustomerController {
         ScoreResponse score = scoreService.getScoreByCustomerId(id);
         return ResponseEntity.ok(score);
     }
+
+    @PatchMapping("/{id}/deactivate")
+    public ResponseEntity<CustomerResponse> deactivate(@PathVariable Long id) {
+        Customer updated = customerService.changeStatus(id, CustomerStatus.INACTIVE);
+        return ResponseEntity.ok(CustomerMapper.toResponse(updated));
+    }
+
+    @PatchMapping("/{id}/activate")
+    public ResponseEntity<CustomerResponse> activate(@PathVariable Long id) {
+        Customer updated = customerService.changeStatus(id, CustomerStatus.ACTIVE);
+        return ResponseEntity.ok(CustomerMapper.toResponse(updated));
+    }
 }
