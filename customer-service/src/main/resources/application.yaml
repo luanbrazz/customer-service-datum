@@ -2,7 +2,7 @@ spring:
   application:
     name: customer-service
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:prod}
+    active: ${SPRING_PROFILES_ACTIVE:test}
   jpa:
     show-sql: true
     hibernate:
@@ -39,8 +39,8 @@ resilience4j:
   circuitbreaker:
     instances:
       scoreService:
-        sliding-window-size: 5
-        minimum-number-of-calls: 3
-        failure-rate-threshold: 50
-        wait-duration-in-open-state: 10s
-        permitted-number-of-calls-in-half-open-state: 2
+        sliding-window-size: 5 # Quantidade de chamadas consideradas para calcular a taxa de falhas
+        minimum-number-of-calls: 3 # Número mínimo de chamadas antes de começar a calcular a taxa de falhas
+        failure-rate-threshold: 50 # Abre o circuito quando a taxa de falhas atingir 50%
+        wait-duration-in-open-state: 10s # Tempo que o circuito permanece aberto antes de permitir chamadas de teste
+        permitted-number-of-calls-in-half-open-state: 2 # Quantidade de chamadas de teste permitidas no estado HALF_OPEN

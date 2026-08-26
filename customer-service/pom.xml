@@ -92,7 +92,6 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
     </dependencies>
-    db/migration/ e, dentro dela, V1__create_customers_table.sql
     <build>
         <finalName>customer-service</finalName>
         <plugins>
